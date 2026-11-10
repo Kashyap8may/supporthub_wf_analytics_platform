@@ -15,8 +15,14 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest>=8", "ruff>=0.5"]
 
+[project.scripts]
+supporthub-generate = "data_generator.simulate:main"
+
 [tool.setuptools.packages.find]
 include = ["data_generator*"]
+
+[tool.setuptools.package-data]
+data_generator = ["sources/*.sql"]
 
 [tool.ruff]
 line-length = 110

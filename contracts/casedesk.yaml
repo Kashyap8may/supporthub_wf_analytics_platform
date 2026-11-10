@@ -1,0 +1,81 @@
+# Data contract: CaseDesk case management database (RDS PostgreSQL, schema casedesk)
+# Checked by tests/test_contracts.py against what the generator writes.
+source: postgres
+system: CaseDesk case management (RDS PostgreSQL)
+incremental_column: "updated_at (case_events: event_row_id or recorded_at)"
+notes:
+  - cases holds the current state and is updated in place; case_events is append-only history
+  - about 2% of events are recorded hours after event_ts, so cases can be ahead of case_events
+  - about 0.5% of events are written twice with the same event_id (different event_row_id)
+  - due_at is naive (calendar days, no holidays or pauses); the real SLA is business days at the working site, paused while PENDING_CUSTOMER
+  - actor_employee_id is null for system actions (case creation, customer responses, auto-closure)
+tables:
+  case_types:
+    primary_key: [case_type_code]
+    columns:
+      - {name: case_type_code, type: string}
+      - {name: case_type_name, type: string}
+      - {name: queue_code, type: string}
+      - {name: sla_days, type: int, nullable: true}
+      - {name: created_at, type: timestamp}
+      - {name: updated_at, type: timestamp}
+  queues:
+    primary_key: [queue_code]
+    columns:
+      - {name: queue_code, type: string}
+      - {name: queue_name, type: string}
+      - {name: case_type_code, type: string, nullable: true}
+      - {name: created_at, type: timestamp}
+      - {name: updated_at, type: timestamp}
+  users:
+    primary_key: [employee_id]
+    columns:
+      - {name: employee_id, type: string}
+      - {name: display_name, type: string}
+      - {name: email, type: string}
+      - {name: is_active, type: boolean}
+      - {name: created_at, type: timestamp}
+      - {name: updated_at, type: timestamp}
+  remediation_projects:
+    primary_key: [project_id]
+    columns:
+      - {name: project_id, type: string}
+      - {name: project_name, type: string}
+      - {name: start_date, type: date}
+      - {name: deadline, type: date}
+      - {name: scope_cases, type: int}
+      - {name: created_at, type: timestamp}
+      - {name: updated_at, type: timestamp}
+  cases:
+    primary_key: [case_id]
+    columns:
+      - {name: case_id, type: bigint}
+      - {name: case_ref, type: string}
+      - {name: case_type_code, type: string}
+      - {name: queue_code, type: string}
+      - {name: remediation_project_id, type: string, nullable: true}
+      - {name: customer_ref, type: string}
+      - {name: customer_segment, type: string, values: [RETAIL, BUSINESS]}
+      - {name: risk_tier, type: string, values: [LOW, MEDIUM, HIGH]}
+      - {name: priority, type: string, values: [NORMAL, HIGH]}
+      - {name: status, type: string, values: [NEW, ASSIGNED, IN_PROGRESS, PENDING_CUSTOMER, ESCALATED, QC_PENDING, QC_PASSED, REWORK, CLOSED]}
+      - {name: assignee_employee_id, type: string, nullable: true}
+      - {name: created_at, type: timestamp}
+      - {name: due_at, type: timestamp}
+      - {name: closed_at, type: timestamp, nullable: true}
+      - {name: outcome, type: string, nullable: true, values: [APPROVED, REJECTED, EXIT_RELATIONSHIP]}
+      - {name: updated_at, type: timestamp}
+  case_events:
+    primary_key: [event_row_id]
+    columns:
+      - {name: event_row_id, type: bigint}
+      - {name: event_id, type: string}
+      - {name: case_id, type: bigint}
+      - {name: event_type, type: string, values: [CREATED, ASSIGNED, STARTED, PENDED, CUSTOMER_RESPONDED, ESCALATED, ESCALATION_STARTED, ESCALATION_RESOLVED, SUBMITTED_FOR_QC, QC_STARTED, QC_PASSED, QC_FAILED, RETURNED_TO_QUEUE, REASSIGNED, CLOSED]}
+      - {name: from_status, type: string, nullable: true}
+      - {name: to_status, type: string}
+      - {name: assignee_employee_id, type: string, nullable: true}
+      - {name: actor_employee_id, type: string, nullable: true}
+      - {name: outcome, type: string, nullable: true}
+      - {name: event_ts, type: timestamp}
+      - {name: recorded_at, type: timestamp}

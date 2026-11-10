@@ -12,32 +12,32 @@
 | Item | Value |
 |---|---|
 | Sites | Pune (Asia/Kolkata, no DST) and Glasgow (Europe/London, BST in summer), each with its own public holidays |
-| Staff | ~120: about 95 analysts, 10 senior reviewers (escalations), 10 QC checkers, 8 team leads |
-| Teams | 8 teams of 12 to 15, each skilled for a subset of case types |
-| Shifts | Weekdays; Pune 09:30 to 18:30 IST, Glasgow 09:00 to 17:30 UK time; overtime on some Saturdays before remediation deadlines |
-| Shrinkage | Meetings, training, coaching, breaks, leave, sickness, attrition and new hires ramping up |
-| Volume | About 600 to 700 new cases a business day, sized to fit the staffing |
+| Staff | About 128: 96 analysts in 8 teams, 10 senior reviewers and 10 QC checkers in 4 teams, and 12 team leads |
+| Teams | Each analyst team has skills in order of preference (for example onboarding first, refresh second); Glasgow has a dedicated remediation team, Pune a refresh team that helps with remediation |
+| Shifts | Weekdays; Pune 09:30 to 18:30 IST, Glasgow 09:00 to 17:30 UK time; remediation teams work Saturday mornings in the last three weeks before a deadline |
+| Shrinkage | Huddles, team meetings, coaching, training, breaks, lunch, booked leave, unplanned absence, attrition and new hires ramping up |
+| Volume | About 300 new cases a business day plus a monthly refresh release of 3,600 and remediation tranches, sized so the operation runs close to capacity |
 
 ### Case types
 
-| Case type | Daily inflow | SLA | Handle time | Notes |
+| Case type | Inflow | SLA | Handle time | Notes |
 |---|---|---|---|---|
-| Onboarding (CDD) | ~300 | 2 business days | ~40 min | Spikes on Mondays and month-ends |
-| Periodic refresh | ~200 | Due date by risk tier | ~70 min | Released in monthly batches ahead of the due date |
-| Event-driven (EDD) | ~40 | 5 business days | ~3 h | Random arrivals, higher escalation rate |
-| Remediation | planned batches | Project deadline | ~75 min | Two or three projects with a fixed scope, a deadline and a burndown |
+| Onboarding (CDD) | ~260 a business day | 2 business days | ~35 min | Monday and month-end peaks, a trickle at weekends |
+| Periodic refresh | 3,600 on the first business day of each month | Due date 35 to 75 days later | ~60 min | Builds a backlog wave every month |
+| Event-driven (EDD) | ~30 a business day | 5 business days | ~2.5 h | Every case gets QC; a quarter are escalated |
+| Remediation | Tranches of 50%, 25%, 25% at weeks 0, 4 and 8 | Project deadline | ~90 min | Three projects of 4,000 to 5,000 cases, each with a deadline and a burndown |
 
 ### Case lifecycle
 
-`NEW` → `ASSIGNED` → `IN_PROGRESS` → (`PENDING_CUSTOMER` ↔ `IN_PROGRESS`) → (`ESCALATED` → `IN_PROGRESS`) → `QC_PENDING` → `QC_PASSED` → `CLOSED`, or `QC_FAILED` → `REWORK` → `QC_PENDING`.
+`NEW` → `ASSIGNED` → `IN_PROGRESS` → optionally `PENDING_CUSTOMER` → `ASSIGNED` → `IN_PROGRESS` → optionally `ESCALATED` → `ASSIGNED` → `IN_PROGRESS` → either `CLOSED`, or `QC_PENDING` → `QC_PASSED` → `CLOSED` / `REWORK` → `IN_PROGRESS` → `QC_PENDING`.
 
-Cases can also be `REASSIGNED` or `RETURNED_TO_QUEUE` at most steps. Closed cases carry an outcome: approved, rejected, or exit the relationship. Every change is an event with a timestamp and the analyst who made it.
+Cases go back to `NEW` when an analyst returns them to the queue or a team lead reassigns them because the owner is away. Customers who never respond are closed after 14 days as exit the relationship. Closed cases carry an outcome: approved, rejected, or exit the relationship. Every change is an event with a timestamp, the person who made it and the new assignee.
 
 ## Sources
 
 | Source | AWS | Feeds | Pattern |
 |---|---|---|---|
-| CaseDesk database | RDS PostgreSQL | `case_types`, `queues`, `cases` (current state, updated in place), `case_events` (append-only status history), `case_assignments` | Incremental on `updated_at` / event id |
+| CaseDesk database | RDS PostgreSQL | `case_types`, `queues`, `users`, `remediation_projects`, `cases` (current state, updated in place), `case_events` (append-only status history with assignees) | Incremental on `updated_at` / `event_row_id` |
 | Activity tracker | API Gateway + Lambda + DynamoDB | Analyst state segments (start, end, state, source device login) | `GET /activities?updated_since=` with paging |
 | HR and QC | S3 | `hr/roster/extract_date=YYYY-MM-DD/roster.csv` (full daily snapshot), `qc/results/date=YYYY-MM-DD/*.json` | Auto Loader |
 | WFM planning | SFTP | Weekly volume forecasts per case type and day, published schedules per analyst and day (re-published when they change), remediation project plans | SFTP pull |

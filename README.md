@@ -12,14 +12,14 @@ All data is synthetic. Company, tool and team names are fictional.
 
 | Case type | What it is | SLA | Typical handle time |
 |---|---|---|---|
-| Onboarding (CDD) | Customer due diligence before a new account opens | 2 business days | ~40 min |
-| Periodic refresh | Scheduled re-review by risk rating (high risk yearly, medium every 2 years, low every 3 years) | The refresh due date | ~70 min |
-| Event-driven (EDD) | Triggered by an alert, adverse media or a risk change; enhanced due diligence | 5 business days | ~3 hours |
-| Remediation | Project work fixing older files, with planned volumes and a deadline | The project deadline | ~75 min |
+| Onboarding (CDD) | Customer due diligence before a new account opens | 2 business days | ~35 min |
+| Periodic refresh | Scheduled re-review by risk rating (high risk yearly, medium every 2 years, low every 3 years) | The refresh due date | ~60 min |
+| Event-driven (EDD) | Triggered by an alert, adverse media or a risk change; enhanced due diligence | 5 business days | ~2.5 hours |
+| Remediation | Project work fixing older files, loaded in large tranches with a deadline | The project deadline | ~90 min |
 
 The workflow has the steps a real KYC desk has: cases wait **pending customer information** (the SLA clock stops), get **escalated** to senior reviewers, are **reassigned** or returned to the queue, and pass a **QC (4-eyes) check**, where failures go back for rework.
 
-Each team works across both sites, which use different public holidays and only one of which observes daylight saving time, so "business days" and "today" depend on where a case is worked.
+Both sites work the same queues, but they have different public holidays and only one observes daylight saving time, so "business days" and "today" depend on where a case is worked.
 
 ### The report
 
@@ -63,12 +63,48 @@ flowchart LR
 | 3 | HR and quality drops | S3 | Daily HR roster extract (hires, leavers, team moves), QC results | Auto Loader |
 | 4 | WFM planning tool | SFTP on EC2 | Volume forecasts by case type, analyst schedules, remediation project plans | SFTP pull |
 
+## Data generator
+
+`data_generator/` simulates the operation day by day. Each day new cases arrive, everyone rostered builds their actual day from the WFM plan (late logins, overrunning breaks, sick days), and the workforce is run in time order: whoever is free next picks the most urgent case they are skilled for and works it for a realistic handle time across their productive time. Cases then go pending, get escalated, pass or fail QC, are reassigned when their owner is away, and close. Every source is written from that one simulation, so case events, activity segments, QC results, rosters and schedules agree the way they would in a real operation.
+
+```bash
+make generate          # 90 days, about 30 seconds
+make generate-small    # 14 days at 10% volume, a few seconds
+```
+
+A 150-day run produces about 61,000 cases, 360,000 case events and 2,700 closures a week. Highlights the report should find: a backlog wave after every monthly periodic-refresh release, onboarding cases breaching over weekends, remediation project REM-01 finishing three weeks after its deadline, and REM-02 at risk because REM-01 took its capacity.
+
+The output mirrors the four source systems; the schema of every feed is in [`contracts/`](contracts/), and the CaseDesk DDL is in [`data_generator/sources/casedesk_schema.sql`](data_generator/sources/casedesk_schema.sql).
+
+| Folder | Source system | Contents |
+|---|---|---|
+| `output/casedesk/` | RDS PostgreSQL | `case_types`, `queues`, `users`, `remediation_projects`, `cases`, `case_events` |
+| `output/activity_api/` | Activity tracker API | `segments.jsonl`: one document per activity segment |
+| `output/s3/hr/roster/` | S3 file drop | Daily full roster snapshot |
+| `output/s3/qc/results/` | S3 file drop | Daily QC results export |
+| `output/sftp/wfm/` | SFTP | Weekly forecasts, weekly schedules (with re-published versions), remediation plans |
+
+### Data problems built in on purpose
+
+| Source | Problem | What the pipeline must do |
+|---|---|---|
+| CaseDesk | `cases` is updated in place; the status history is a separate event table | Rebuild each case's lifecycle and time in status from events |
+| CaseDesk | About 2% of events are recorded hours late; about 0.5% are written twice | Deduplicate on `event_id`; order by `event_ts`, load by `recorded_at` |
+| CaseDesk | `due_at` counts calendar days and ignores holidays and pauses | Build a business-day calendar per site and an SLA clock that stops while pending customer information |
+| Activity tracker | Analysts are identified by network login, sometimes in upper case | Normalise and map logins to employee ids through the HR roster |
+| Activity tracker | Some segments never end; some overlap the next one | Cap open segments at the end of the shift; trim overlaps |
+| HR roster | Full daily snapshots; team moves, leavers and new hires | Build SCD Type 2 history from snapshots |
+| QC results | Sampled, not every case; about 5% land a day late | Join on case and attempt; allow late arrivals |
+| WFM schedules | Local times without an offset; re-published versions | Convert with the site's time zone; keep the latest version and the history |
+| WFM forecasts | A new version every week | Compare actuals with the version current at the time |
+| All | Two time zones, one with DST; different holidays | Store UTC plus site-local dates |
+
 ## Progress
 
 | Milestone | What it delivers | Status |
 |---|---|---|
 | M0 Scaffold | Repo layout, README, project plan, CI skeleton | Done |
-| M1 Data generator | Seeded simulation of the KYC operation and every source feed, data contracts, tests | Planned |
+| M1 Data generator | Seeded simulation of the KYC operation and every source feed, data contracts, tests | Done |
 | M2 AWS sources | Terraform for the four source systems, secrets, IAM, budget alert | Planned |
 | M3 Load the sources | History in every source, then a daily simulator job | Planned |
 | M4 Databricks foundation | Catalogs, schemas, secret scope | Planned |

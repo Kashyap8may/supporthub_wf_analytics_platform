@@ -1,0 +1,23 @@
+# Data contract: QC results export (S3 file drop)
+# Checked by tests/test_contracts.py against what the generator writes.
+source: s3
+system: Quality check tool daily export
+path: qc/results/date=YYYY-MM-DD/qc_results.jsonl
+format: {type: jsonl}
+arrival: daily at 23:00 UTC
+primary_key: [qc_id]
+notes:
+  - QC samples cases (every EDD case, a share of the others); reworked cases are always re-checked
+  - about 5% of results miss the day's export and arrive in the next day's file
+  - case_ref joins to CaseDesk cases.case_ref; qc_attempt counts checks of the same case
+columns:
+  - {name: qc_id, type: bigint}
+  - {name: case_ref, type: string}
+  - {name: case_type_code, type: string}
+  - {name: qc_attempt, type: int}
+  - {name: checker_employee_id, type: string}
+  - {name: analyst_employee_id, type: string}
+  - {name: checked_at, type: timestamp}
+  - {name: result, type: string, values: [PASS, FAIL]}
+  - {name: error_category, type: string, nullable: true}
+  - {name: error_severity, type: string, nullable: true, values: [MINOR, MAJOR]}

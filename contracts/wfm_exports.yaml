@@ -1,0 +1,51 @@
+# Data contract: WFM planning tool exports (SFTP)
+# Checked by tests/test_contracts.py against what the generator writes.
+source: sftp
+system: WFM planning tool
+format: {type: csv, header: true, delimiter: ","}
+feeds:
+  forecasts:
+    path: wfm/forecasts/FCST_<YYYYMMDD>.csv
+    arrival: Mondays 07:00 UTC; each file is a new forecast version covering 28 days
+    primary_key: [forecast_version, forecast_date, case_type_code]
+    notes:
+      - compare actuals with the version that was current at the time, not the latest
+    columns:
+      - {name: forecast_version, type: date}
+      - {name: forecast_date, type: date}
+      - {name: case_type_code, type: string}
+      - {name: forecast_cases, type: int}
+      - {name: forecast_aht_minutes, type: decimal}
+  schedules:
+    path: wfm/schedules/SCH_<week start YYYYMMDD>_v<version>.csv
+    arrival: v1 Thursdays 10:00 UTC for the next week; v2 Mondays 08:00 UTC when leave or training was added
+    primary_key: [schedule_week_start, schedule_version, employee_id, start_local]
+    notes:
+      - times are site-local without an offset; site_code tells the time zone (PUN Asia/Kolkata, GLA Europe/London)
+      - keep the latest version per employee and day, and the history for adherence to the published plan
+      - LEAVE marks a full day off
+    columns:
+      - {name: schedule_week_start, type: date}
+      - {name: schedule_version, type: int}
+      - {name: published_at, type: timestamp}
+      - {name: employee_id, type: string}
+      - {name: site_code, type: string}
+      - {name: schedule_date, type: date}
+      - {name: activity, type: string, values: [WORK, MEETING, TRAINING, COACHING, BREAK, LUNCH, LEAVE]}
+      - {name: start_local, type: string}
+      - {name: end_local, type: string}
+  remediation_plans:
+    path: wfm/remediation/REMPLAN_<project>_v<version>.csv
+    arrival: v1 a week before the project starts; v2 a re-plan half-way through
+    primary_key: [project_id, plan_version, week_start]
+    columns:
+      - {name: project_id, type: string}
+      - {name: project_name, type: string}
+      - {name: plan_version, type: int}
+      - {name: published_on, type: date}
+      - {name: deadline, type: date}
+      - {name: scope_cases, type: int}
+      - {name: week_start, type: date}
+      - {name: planned_release, type: int}
+      - {name: planned_completions, type: int}
+      - {name: planned_fte, type: decimal}

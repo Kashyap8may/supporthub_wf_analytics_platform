@@ -1,0 +1,28 @@
+# Data contract: HR roster daily snapshot (S3 file drop)
+# Checked by tests/test_contracts.py against what the generator writes.
+source: s3
+system: HR system daily extract
+path: hr/roster/extract_date=YYYY-MM-DD/roster.csv
+format: {type: csv, header: true, delimiter: ","}
+arrival: daily at 02:00 UTC, full snapshot
+primary_key: [extract_date, employee_id]
+notes:
+  - a full snapshot every day; changes (team moves, leavers) must be derived by comparing snapshots (SCD2)
+  - leavers stay listed with employment_status LEAVER for 30 days after leave_date
+columns:
+  - {name: extract_date, type: date}
+  - {name: employee_id, type: string}
+  - {name: network_login, type: string}
+  - {name: first_name, type: string}
+  - {name: last_name, type: string}
+  - {name: email, type: string}
+  - {name: site_code, type: string, values: [PUN, GLA]}
+  - {name: site_name, type: string}
+  - {name: team_id, type: string}
+  - {name: team_name, type: string}
+  - {name: role, type: string, values: [ANALYST, SENIOR_REVIEWER, QC_CHECKER, TEAM_LEAD]}
+  - {name: manager_employee_id, type: string, nullable: true}
+  - {name: hire_date, type: date}
+  - {name: leave_date, type: date, nullable: true}
+  - {name: employment_status, type: string, values: [ACTIVE, LEAVER]}
+  - {name: fte, type: decimal}

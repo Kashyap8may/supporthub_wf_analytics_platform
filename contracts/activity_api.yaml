@@ -1,0 +1,22 @@
+# Data contract: activity tracker segments (API Gateway + Lambda + DynamoDB)
+# Checked by tests/test_contracts.py against what the generator writes.
+source: api
+system: Activity tracker REST API
+endpoint: GET /activities?updated_since=<ISO timestamp>&page_token=<token>
+format:
+  type: json
+  pagination: next_page_token
+primary_key: [segment_id]
+notes:
+  - analysts are identified by network login (DOMAIN\user), not employee_id; map through the HR roster
+  - some workstations send the login in upper case
+  - a segment still running has end_ts null; about 1% never get an end time
+  - about 1% of segments overlap the next segment by a few minutes
+columns:
+  - {name: segment_id, type: string}
+  - {name: login, type: string}
+  - {name: state, type: string, values: [PRODUCTIVE, ADMIN, MEETING, TRAINING, COACHING, BREAK, LUNCH]}
+  - {name: start_ts, type: timestamp}
+  - {name: end_ts, type: timestamp, nullable: true}
+  - {name: workstation, type: string}
+  - {name: updated_at, type: timestamp}

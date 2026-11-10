@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+.ruff_cache/
+
+# Generated data (never commit)
+output/
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+.terraform.lock.hcl
+crash.log
+backend.hcl
+*.tfplan
+.build/
+
+# Databricks
+.databricks/
+
+# Secrets and local config
+.env
+*.pem
+*.key
+*.ppk
+id_rsa*
+
+# Editors and OS
+.vscode/
+.idea/
+.DS_Store

@@ -20,3 +20,15 @@ jobs:
           ruff format --check .
       - name: Test
         run: pytest -q
+
+  terraform:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+      - name: Format
+        run: terraform -chdir=infra/terraform fmt -recursive -check
+      - name: Validate
+        run: |
+          terraform -chdir=infra/terraform/envs/dev init -backend=false -input=false
+          terraform -chdir=infra/terraform/envs/dev validate

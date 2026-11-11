@@ -8,7 +8,7 @@ Read with `CLAUDE.md`. Update this file whenever a milestone finishes or a decis
 |---|---|---|
 | M0 Scaffold | Done | Tagged `m0` |
 | M1 Data generator | Done | Simulation, writers for every source, contracts, 19 tests |
-| M2 AWS sources | Next | Share the RetailPulse RDS instance and SFTP server (see decisions) |
+| M2 AWS sources | Done 2026-11-11 | 69 resources; every source tested from a laptop |
 | M3 Load the sources | Not started | Reuse RetailPulse's `daily.py` / `publish.py` / bundle patterns |
 | M4 to M9 | Owner's own work | Do not implement |
 
@@ -32,7 +32,12 @@ Read with `CLAUDE.md`. Update this file whenever a milestone finishes or a decis
 | Remediation | Tranches at weeks 0, 4 and 8; one dedicated team plus a team that helps when its refresh queue is clear | Gives a non-trivial burndown: REM-01 misses its deadline by about three weeks, REM-02 starts behind |
 | Infrastructure | Share the RetailPulse RDS instance (new database) and SFTP server (new chrooted user) | Owner's choice: about $1 a month extra instead of $5 to $8 |
 
-## Notes for M2
+## M2 as built
 
-- RetailPulse's daily job is being paused (the owner must re-run `databricks auth login` first). Its RDS and EC2 window schedules stay, so the shared servers keep the 06:00 to 08:00 UTC window.
-- Shared servers mean SupportHub's Terraform reads RetailPulse's resources (data sources), adds a `supporthub` database and login on RDS, and adds an SFTP user with its own chroot on EC2. Changes to the EC2 user data should go through RetailPulse's Terraform, or SupportHub adds the user via SSM Run Command.
+- RetailPulse's daily job is paused (2026-11-10); its RDS and EC2 window schedules stay, so the shared servers run 06:00 to 08:00 UTC.
+- Terraform state is in RetailPulse's state bucket under the key `supporthub/dev/sources.tfstate`.
+- The `cyrilgdn/postgresql` provider creates the database, roles, schema and grants with the shared instance's admin login (read from `/retailpulse/dev/postgres/*`), so **the RDS instance must be running for every plan and apply.**
+- The SFTP user is added by an SSM association running `AWS-RunShellScript` on the shared instance; it re-runs when the instance comes online and is idempotent. The server's sshd already chroots every `sftponly` member.
+- The `pipelines` policy is a managed policy: as an inline user policy its parameter allow-list exceeded the 2,048-character limit, which failed the first apply.
+- Smoke test on 2026-11-11: owner creates tables, reader reads but cannot write, non-TLS refused, RetailPulse's logins refused, API 200/403/400, SFTP chroot holds, buckets reachable.
+- Not yet done: a test from Databricks. It needs the `pipelines` key in the `supporthub-dev` secret scope (`infra/scripts/store-aws-key-in-databricks.ps1 -User pipelines`); do it at the start of M3 together with the `simulator` key.

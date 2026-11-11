@@ -99,13 +99,33 @@ The output mirrors the four source systems; the schema of every feed is in [`con
 | WFM forecasts | A new version every week | Compare actuals with the version current at the time |
 | All | Two time zones, one with DST; different holidays | Store UTC plus site-local dates |
 
+## AWS sources
+
+`infra/terraform/` creates SupportHub's sources in `us-east-1`. To keep the cost to cents a month, two of them live on servers the owner's earlier project, RetailPulse, already runs in the same account; its Terraform owns those servers and their daily 06:00 to 08:00 UTC run window, and SupportHub only adds to them.
+
+| Source | AWS resources | Notes |
+|---|---|---|
+| CaseDesk | Database `supporthub`, schema `casedesk` on the shared RDS PostgreSQL 17 instance | Owner login for the simulator, read-only login for the pipelines (default privileges on new tables); TLS required; other logins on the instance cannot connect |
+| Activity tracker | DynamoDB (on-demand) + Lambda (Python, arm64) + API Gateway REST API | API key and usage plan; a GSI on the UTC day of `updated_at` serves `updated_since` pulls |
+| HR and QC drops | S3 bucket `sources`, versioned, encrypted, TLS-only | A separate `simulator` bucket holds the pre-generated year; the pipelines cannot read it |
+| WFM exports | User `supporthub` on the shared OpenSSH server | Chrooted and key-only; created on the instance through SSM Run Command |
+
+Connection details and secrets are in SSM Parameter Store under `/supporthub/dev/`. Two IAM users exist for Databricks, `simulator` (writes) and `pipelines` (read-only, an allow-list of parameters); their keys go straight into a Databricks secret scope with `infra/scripts/store-aws-key-in-databricks.ps1`.
+
+```bash
+cp infra/terraform/envs/dev/backend.hcl.example infra/terraform/envs/dev/backend.hcl   # fill in the bucket
+make sources-up                      # the shared RDS instance must be running for plan and apply
+make infra-init infra-plan infra-apply
+make infra-destroy                   # removes SupportHub's sources; RetailPulse's servers stay
+```
+
 ## Progress
 
 | Milestone | What it delivers | Status |
 |---|---|---|
 | M0 Scaffold | Repo layout, README, project plan, CI skeleton | Done |
 | M1 Data generator | Seeded simulation of the KYC operation and every source feed, data contracts, tests | Done |
-| M2 AWS sources | Terraform for the four source systems, secrets, IAM, budget alert | Planned |
+| M2 AWS sources | Terraform for the four source systems, secrets, IAM | Done |
 | M3 Load the sources | History in every source, then a daily simulator job | Planned |
 | M4 Databricks foundation | Catalogs, schemas, secret scope | Planned |
 | M5 Bronze | One ingestion job per source, with audit columns and watermarks | Planned |

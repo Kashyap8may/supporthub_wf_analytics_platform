@@ -1,0 +1,3 @@
+# Copy to backend.hcl (git-ignored). Same state bucket as RetailPulse.
+bucket = "retailpulse-tfstate-<account id>"
+region = "us-east-1"

@@ -106,6 +106,47 @@ def _queue_for_status(case: dict, status: str) -> str:
     return case["queue_code"]
 
 
+def case_row(case: dict, events: list[dict]) -> dict:
+    """A case as the ``cases`` table holds it after ``events`` (its history so far, in order)."""
+    last = events[-1]
+    closed = next((e for e in reversed(events) if e["event_type"] == "CLOSED"), None)
+    return {
+        **{k: v for k, v in case.items() if not k.startswith("_")},
+        "queue_code": _queue_for_status(case, last["to_status"]),
+        "status": last["to_status"],
+        "assignee_employee_id": last["assignee_employee_id"],
+        "closed_at": closed["event_ts"] if closed else None,
+        "outcome": closed["outcome"] if closed else None,
+        "updated_at": last["event_ts"],
+    }
+
+
+def user_changes(person: dict) -> list[datetime]:
+    """When a person's ``users`` row is inserted (hire) and updated (leave)."""
+    joined = _at(person["hire_date"], 6)
+    return [joined] + ([_at(person["leave_date"], 18)] if person["leave_date"] else [])
+
+
+def user_row(person: dict, as_of: datetime) -> dict | None:
+    joined, *rest = user_changes(person)
+    if joined > as_of:
+        return None
+    inactive = bool(rest) and rest[0] <= as_of
+    return {
+        "employee_id": person["employee_id"],
+        "display_name": f"{person['first_name']} {person['last_name']}",
+        "email": person["email"],
+        "is_active": not inactive,
+        "created_at": joined,
+        "updated_at": rest[0] if inactive else joined,
+    }
+
+
+def project_row(project: dict) -> dict:
+    created = _at(project["start_date"] - timedelta(days=14))
+    return {**project, "created_at": created, "updated_at": created}
+
+
 def casedesk_tables(md: MasterData, sim: SimulationResult, rows: list[dict], as_of: datetime) -> dict:
     """Every table's rows as the database holds them at ``as_of``."""
     by_case: dict[int, list[dict]] = {}
@@ -115,47 +156,22 @@ def casedesk_tables(md: MasterData, sim: SimulationResult, rows: list[dict], as_
     cases = []
     for case in sim.cases:
         events = by_case.get(case["case_id"])
-        if not events:
-            continue
-        events.sort(key=lambda e: (e["event_ts"], e["seq"]))
-        last = events[-1]
-        closed = next((e for e in reversed(events) if e["event_type"] == "CLOSED"), None)
-        cases.append(
-            {
-                **{k: v for k, v in case.items() if not k.startswith("_")},
-                "queue_code": _queue_for_status(case, last["to_status"]),
-                "status": last["to_status"],
-                "assignee_employee_id": last["assignee_employee_id"],
-                "closed_at": closed["event_ts"] if closed else None,
-                "outcome": closed["outcome"] if closed else None,
-                "updated_at": last["event_ts"],
-            }
-        )
+        if events:
+            events.sort(key=lambda e: (e["event_ts"], e["seq"]))
+            cases.append(case_row(case, events))
+    users = [row for person in md.staff if (row := user_row(person, as_of))]
+    projects = [project_row(p) for p in md.projects if project_row(p)["created_at"] <= as_of]
+    return {
+        **static_tables(),
+        "users": users,
+        "remediation_projects": projects,
+        "cases": cases,
+        "case_events": [r for r in rows if r["recorded_at"] <= as_of],
+    }
 
-    users = []
-    for person in md.staff:
-        joined = _at(person["hire_date"], 6)
-        if joined > as_of:
-            continue
-        left = _at(person["leave_date"], 18) if person["leave_date"] else None
-        inactive = left is not None and left <= as_of
-        users.append(
-            {
-                "employee_id": person["employee_id"],
-                "display_name": f"{person['first_name']} {person['last_name']}",
-                "email": person["email"],
-                "is_active": not inactive,
-                "created_at": joined,
-                "updated_at": left if inactive else joined,
-            }
-        )
 
-    projects = []
-    for p in md.projects:
-        created = _at(p["start_date"] - timedelta(days=14))
-        if created <= as_of:
-            projects.append({**p, "created_at": created, "updated_at": created})
-
+def static_tables() -> dict[str, list[dict]]:
+    """Reference tables that exist from the day CaseDesk went live."""
     return {
         "case_types": [
             {
@@ -178,10 +194,6 @@ def casedesk_tables(md: MasterData, sim: SimulationResult, rows: list[dict], as_
             }
             for code, (name, case_type) in QUEUES.items()
         ],
-        "users": users,
-        "remediation_projects": projects,
-        "cases": cases,
-        "case_events": [r for r in rows if r["recorded_at"] <= as_of],
     }
 
 

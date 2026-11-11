@@ -9,7 +9,7 @@ Read with `CLAUDE.md`. Update this file whenever a milestone finishes or a decis
 | M0 Scaffold | Done | Tagged `m0` |
 | M1 Data generator | Done | Simulation, writers for every source, contracts, 19 tests |
 | M2 AWS sources | Done 2026-11-11 | 69 resources; every source tested from a laptop |
-| M3 Load the sources | Not started | Reuse RetailPulse's `daily.py` / `publish.py` / bundle patterns |
+| M3 Load the sources | Done 2026-11-11 | History 2026-06-30 to 2026-11-10 published and checked; daily job `supporthub-source-simulator` at 06:15 UTC |
 | M4 to M9 | Owner's own work | Do not implement |
 
 ## How the generator works
@@ -40,4 +40,17 @@ Read with `CLAUDE.md`. Update this file whenever a milestone finishes or a decis
 - The SFTP user is added by an SSM association running `AWS-RunShellScript` on the shared instance; it re-runs when the instance comes online and is idempotent. The server's sshd already chroots every `sftponly` member.
 - The `pipelines` policy is a managed policy: as an inline user policy its parameter allow-list exceeded the 2,048-character limit, which failed the first apply.
 - Smoke test on 2026-11-11: owner creates tables, reader reads but cannot write, non-TLS refused, RetailPulse's logins refused, API 200/403/400, SFTP chroot holds, buckets reachable.
-- Not yet done: a test from Databricks. It needs the `pipelines` key in the `supporthub-dev` secret scope (`infra/scripts/store-aws-key-in-databricks.ps1 -User pipelines`); do it at the start of M3 together with the `simulator` key.
+- Tested from Databricks serverless on 2026-11-11 with the `pipelines` key from the `supporthub-dev` secret scope: S3, restricted parameters refused, API, CaseDesk through psycopg and Spark JDBC, SFTP.
+
+## M3 as built
+
+- `data_generator/daily.py` writes one folder per day (366 for the year, 280 MB, uploaded to `s3://<simulator bucket>/days/`). `tests/test_daily.py` proves that replaying them rebuilds `generate()` for CaseDesk, the activity API and every file.
+- `data_generator/publish.py` follows RetailPulse's publisher; the tables are created by the owner login, so Terraform's default privileges give the reader SELECT automatically.
+- The Databricks job `supporthub-source-simulator` (bundle `databricks.yml`) runs at 06:15 UTC with the `simulator` key. The first catch-up (134 days) took 4 minutes; every source then matched the day folders exactly.
+- RetailPulse's scheduled runs did not fire on some days (4, 5 and 10 November); watch the run history here. A missed run is harmless, since the next one catches up.
+- The calendar ends on 2027-06-30. To go further, raise `horizon_days`, regenerate, re-upload and republish from scratch.
+
+## Next steps
+
+1. Owner: M4 onwards (lakehouse and report). Everything the pipelines need is in the README section "Reading the sources".
+2. Watch the first scheduled runs of `supporthub-source-simulator`.

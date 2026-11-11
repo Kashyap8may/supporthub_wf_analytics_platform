@@ -29,3 +29,21 @@ It follows the same patterns as the owner's earlier project `retailpulse-data-pl
 - Every source feed has a contract in `contracts/`; tests enforce it.
 - Comments explain why, not what. Match the style of the surrounding code.
 - Keep files with LF line endings (`.gitattributes`).
+
+## Repository map
+
+```
+data_generator/
+  config.py, reference.py   settings; sites, holidays, case types, queues, teams, remediation projects
+  master.py                 staff over the horizon, booked leave, planned_day() (the WFM plan as known on a date)
+  simulation.py             the event-driven daily simulation of arrivals, activity and case work
+  sources/                  one writer per source + casedesk_schema.sql
+  simulate.py               CLI: the whole dataset at one moment
+  daily.py                  CLI: one folder of changes per day (uploaded to the simulator bucket)
+  publish.py                CLI: applies pending days to the live sources (run daily by the Databricks job)
+contracts/                  YAML data contract per feed
+services/activity_api/      Lambda handler for the activity tracker API
+infra/terraform/            modules/sources and envs/dev (shares RetailPulse's RDS and SFTP server)
+infra/scripts/              store-aws-key-in-databricks.ps1
+databricks.yml, databricks/ Asset Bundle, the simulator job entry point, connectivity notebook
+```

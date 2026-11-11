@@ -1,0 +1,26 @@
+# Databricks Asset Bundle: the daily source simulator job.
+#
+#   databricks bundle validate
+#   databricks bundle deploy            # uploads the repo files and creates or updates the job
+#   databricks bundle run source_simulator
+#
+# The owner's bronze, silver and gold resources can be added to this bundle later.
+
+bundle:
+  name: supporthub
+
+include:
+  - databricks/resources/*.yml
+
+# Git-ignored files (output/, tfvars, state) are never uploaded.
+sync:
+  exclude:
+    - infra/**
+    - tests/**
+    - docs/**
+
+targets:
+  dev:
+    default: true
+    workspace:
+      host: https://dbc-b41030c9-6e12.cloud.databricks.com

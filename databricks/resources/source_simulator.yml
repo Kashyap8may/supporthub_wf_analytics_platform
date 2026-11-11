@@ -1,0 +1,33 @@
+resources:
+  jobs:
+    source_simulator:
+      name: supporthub-source-simulator
+      description: >
+        Publishes the next simulated day(s) into SupportHub's AWS sources: CaseDesk upserts,
+        activity tracker segments, HR and QC files in S3, and WFM files on SFTP. Catches up on
+        missed days by itself.
+      # Inside the 06:00 to 08:00 UTC window when the shared RDS instance and SFTP server run.
+      schedule:
+        quartz_cron_expression: "0 15 6 * * ?"
+        timezone_id: UTC
+        pause_status: UNPAUSED
+      max_concurrent_runs: 1
+      timeout_seconds: 5400
+      tasks:
+        - task_key: publish
+          spark_python_task:
+            python_file: ../simulator/run_publisher.py
+            parameters: ["--repo-root", "${workspace.file_path}"]
+          environment_key: publisher
+          max_retries: 1
+          min_retry_interval_millis: 300000
+      environments:
+        - environment_key: publisher
+          spec:
+            client: "2"
+            dependencies:
+              - faker>=24
+              - pyyaml>=6
+              - boto3>=1.34
+              - psycopg[binary]>=3.1
+              - paramiko>=3.4

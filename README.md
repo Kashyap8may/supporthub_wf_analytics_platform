@@ -119,6 +119,30 @@ make infra-init infra-plan infra-apply
 make infra-destroy                   # removes SupportHub's sources; RetailPulse's servers stay
 ```
 
+## Daily source simulator
+
+The sources behave like live systems: they hold history from 2026-06-30 and receive the next day's changes every morning.
+
+1. `python -m data_generator.daily` simulates the fixed one-year calendar once and writes one folder per day with only that day's changes: CaseDesk upserts, activity segments, and the files that arrive. Tests prove that replaying the days in order rebuilds every source exactly.
+2. The folders sit in the private `simulator` bucket (280 MB for the year), which the pipelines cannot read.
+3. `python -m data_generator.publish` applies every day not yet published, up to yesterday: CaseDesk upserts (one transaction per day), DynamoDB puts, S3 copies, and SFTP uploads written as `.part` and renamed. Every write replaces by key, so a rerun is harmless, and missed days are caught up on the next run.
+4. The Databricks job `supporthub-source-simulator` runs it at 06:15 UTC on serverless, inside the window when the shared servers are up. It is defined in `databricks.yml` and deployed with `databricks bundle deploy`.
+
+On 2026-11-11 the history (134 days) was published in 4 minutes and checked source by source: 57,389 cases, 318,749 case events, 129 users, 99,442 activity segments, 247 S3 files and 63 SFTP files.
+
+## Reading the sources
+
+What the bronze layer works with. Connection details are in SSM Parameter Store under `/supporthub/dev/`; Databricks reads them with the `pipelines` IAM user, whose key is in the `supporthub-dev` secret scope (`aws_access_key_id`, `aws_secret_access_key`). `databricks/notebooks/01_source_connectivity_test.py` shows each connection.
+
+| Source | Where | Login | New data appears |
+|---|---|---|---|
+| CaseDesk | `postgres/host`, database `supporthub`, schema `casedesk`, TLS required | `postgres/reader_username` / `postgres/reader_password` (read-only) | `cases` updated in place (pull on `updated_at`); `case_events` appended (pull on `event_row_id` or `recorded_at`) |
+| Activity tracker | `activity_api/url`, header `x-api-key: <activity_api/api_key>` | API key | `GET ?updated_since=<ISO>&limit=<=1000`, then follow `next_page_token`; no `updated_since` pages through everything |
+| HR and QC | bucket `s3/sources_bucket`: `hr/roster/extract_date=YYYY-MM-DD/`, `qc/results/date=YYYY-MM-DD/` | IAM `pipelines` user | One roster snapshot and one QC export a day; some QC results land a day late |
+| WFM exports | host from the parameter named in `sftp/host_parameter` (the shared server's IP changes when it restarts), user `sftp/username`, key `sftp/private_key` | ED25519 key | `wfm/forecasts/` on Mondays, `wfm/schedules/` on Thursdays (v2 on Mondays), `wfm/remediation/`; skip `*.part`; move pulled files to `archive/` |
+
+The shared RDS instance and SFTP server run 06:00 to 08:00 UTC. Outside that window, start them with `make sources-up` (or `rds:StartDBInstance` / `ec2:StartInstances`, which the `pipelines` user may call).
+
 ## Progress
 
 | Milestone | What it delivers | Status |
@@ -126,7 +150,7 @@ make infra-destroy                   # removes SupportHub's sources; RetailPulse
 | M0 Scaffold | Repo layout, README, project plan, CI skeleton | Done |
 | M1 Data generator | Seeded simulation of the KYC operation and every source feed, data contracts, tests | Done |
 | M2 AWS sources | Terraform for the four source systems, secrets, IAM | Done |
-| M3 Load the sources | History in every source, then a daily simulator job | Planned |
+| M3 Load the sources | History since 2026-06-30 in every source, then a daily simulator job in Databricks | Done |
 | M4 Databricks foundation | Catalogs, schemas, secret scope | Planned |
 | M5 Bronze | One ingestion job per source, with audit columns and watermarks | Planned |
 | M6 Silver | Case lifecycle, business-day SLA clock, analyst ID mapping, SCD2, quarantine | Planned |

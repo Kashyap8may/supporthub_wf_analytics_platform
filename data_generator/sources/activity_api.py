@@ -22,34 +22,49 @@ from ..simulation import SimulationResult
 from .common import write_jsonl
 
 
-def segment_documents(md: MasterData, sim: SimulationResult, as_of: datetime):
-    seed = md.cfg.seed
-    upper = {
-        s["employee_id"] for s in md.staff if rng_for(seed, "login-case", s["employee_id"]).random() < 0.05
+def upper_case_logins(md: MasterData) -> set[str]:
+    """Employees whose workstation reports the login in upper case."""
+    return {
+        s["employee_id"]
+        for s in md.staff
+        if rng_for(md.cfg.seed, "login-case", s["employee_id"]).random() < 0.05
     }
+
+
+def recorded_end(seed: int, seg: dict) -> datetime | None:
+    """The end time the tracker records, with its data problems: never ended, or overlapping."""
+    rng = rng_for(seed, "segment-dq", seg["segment_no"])
+    roll = rng.random()
+    if roll < 0.01:
+        return None
+    if roll < 0.02:
+        return seg["end_ts"] + timedelta(minutes=rng.randint(1, 5))
+    return seg["end_ts"]
+
+
+def segment_document(md: MasterData, seg: dict, upper: set[str], as_of: datetime) -> dict:
+    """One segment as the API returns it at ``as_of`` (no end time until it has ended)."""
+    person = md.by_id[seg["employee_id"]]
+    end = recorded_end(md.cfg.seed, seg)
+    if end is not None and end > as_of:
+        end = None
+    login = person["network_login"].upper() if person["employee_id"] in upper else person["network_login"]
+    return {
+        "segment_id": f"SEG{seg['segment_no']:09d}",
+        "login": login,
+        "state": seg["state"],
+        "start_ts": seg["start_ts"],
+        "end_ts": end,
+        "workstation": f"{person['site_code']}-WS{int(person['employee_id'][1:]) % 400:03d}",
+        "updated_at": end or seg["start_ts"],
+    }
+
+
+def segment_documents(md: MasterData, sim: SimulationResult, as_of: datetime):
+    upper = upper_case_logins(md)
     for seg in sim.activities:
-        if seg["start_ts"] > as_of:
-            continue
-        person = md.by_id[seg["employee_id"]]
-        rng = rng_for(seed, "segment-dq", seg["segment_no"])
-        roll = rng.random()
-        end = seg["end_ts"]
-        if roll < 0.01:
-            end = None
-        elif roll < 0.02:
-            end = end + timedelta(minutes=rng.randint(1, 5))
-        if end is not None and end > as_of:
-            end = None
-        login = person["network_login"].upper() if person["employee_id"] in upper else person["network_login"]
-        yield {
-            "segment_id": f"SEG{seg['segment_no']:09d}",
-            "login": login,
-            "state": seg["state"],
-            "start_ts": seg["start_ts"],
-            "end_ts": end,
-            "workstation": f"{person['site_code']}-WS{int(person['employee_id'][1:]) % 400:03d}",
-            "updated_at": end or seg["start_ts"],
-        }
+        if seg["start_ts"] <= as_of:
+            yield segment_document(md, seg, upper, as_of)
 
 
 def write_activity_api(

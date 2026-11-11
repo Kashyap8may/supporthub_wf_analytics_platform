@@ -1,4 +1,4 @@
-.PHONY: install lint test generate generate-small clean infra-init infra-plan infra-apply infra-destroy sources-up
+.PHONY: install lint test generate generate-small clean daily publish simulator-deploy simulator-run infra-init infra-plan infra-apply infra-destroy sources-up
 
 TF_DEV := terraform -chdir=infra/terraform/envs/dev
 REGION := us-east-1
@@ -23,6 +23,23 @@ generate-small:
 
 clean:
 	rm -rf output .pytest_cache .ruff_cache
+
+# --- Daily source simulator. Publishing needs boto3, psycopg[binary] and paramiko.
+
+# Split the one-year calendar into day folders and upload them (once, about 6 minutes plus upload).
+daily:
+	python -m data_generator.daily --out output/daily
+	aws s3 sync output/daily s3://$$(aws ssm get-parameter --name /supporthub/dev/s3/simulator_bucket --query Parameter.Value --output text)/days/
+
+# Publish pending days from this machine (the Databricks job does this every morning).
+publish:
+	python -m data_generator.publish --verbose
+
+simulator-deploy:
+	databricks bundle deploy
+
+simulator-run:
+	databricks bundle run source_simulator
 
 # --- AWS sources (Terraform). Shares RetailPulse's RDS instance and SFTP server, which must be
 # running for plan and apply: inside 06:00 to 08:00 UTC, or after `make sources-up`.
